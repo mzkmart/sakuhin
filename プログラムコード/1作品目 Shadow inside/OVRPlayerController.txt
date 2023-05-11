@@ -1,0 +1,195 @@
+using System;
+using UnityEngine;
+
+public class OVRPlayerController : MonoBehaviour
+{
+	
+	//影に入っているか
+	public bool _isShadow = true;
+	//影に入れるかどうか
+	public bool _isInsideCheck = true;
+
+	//プレイヤーの能力のSE
+	[SerializeField]
+	private AudioClip[] _playerSes;
+	//どのオーディオソースで鳴らすか
+	[SerializeField]
+	private AudioSource _AudioSource;
+
+	//プレイヤーのスフィアコライダー
+	[SerializeField]
+	private SphereCollider _sphereCollider;
+
+	//プレイヤーの上にオブジェクトがあるか
+	private bool _isHitObject = true;
+
+	//フェードイン、アウトが関数で書かれているスクリプトを取得
+	OVRScreenFade _screenFade;
+
+	//メインカメラ
+	[SerializeField]
+	GameObject _mainCamera;
+
+	//影中のエフェクト
+	[SerializeField]
+	GameObject _shadowEffect;
+
+	void Start()
+	{
+		_screenFade = _mainCamera.GetComponent<OVRScreenFade>();
+
+	}
+
+	
+	void Update()
+	{
+		//影の状態の場合に頭上にオブジェクトがないかを取得する
+		//原点
+		Vector3 origin = new Vector3(0, 0, 0);
+		//X軸方向を表すベクトル								   
+		Vector3 direction = new Vector3(0, 1, 0);
+		//Rayを生成;
+		Ray ray = new Ray(transform.position, transform.up);
+		Debug.DrawRay(ray.origin, ray.direction * 0.5f, Color.blue);
+		RaycastHit hit;
+		//RayCastにオブジェクトがぶつかったかを取得
+		var isHit = Physics.Raycast(ray, out hit, 2f);
+		if (isHit)
+		{
+			//ぶつかった際は影から出れないようにフラグをfalse
+			_isHitObject = false;
+		}
+		else
+		{
+			//ぶつからなかった際はtrueにする
+			_isHitObject = true;
+		}
+
+		//プレイヤーの状態をどれにするか
+		//影に入っていなく、プレイヤーがしゃがんでいるか
+		//影に入っている状態からしゃがんだか、頭上にオブジェクトがないか
+		if ((_mainCamera.transform.localPosition.y <= -0.1f && _isCrouch == true && _isShadow) ||
+			(OVRInput.GetDown(OVRInput.RawButton.A) && _isInsideCheck == true && _isShadow == false) && _isHitObject)
+		{
+			Crouch();
+		}
+		//しゃがんだ状態で影に入れる状態か
+		else if (OVRInput.GetDown(OVRInput.RawButton.A) && _isCrouch == false && _isInsideCheck == true && _isShadow == true)
+		{
+			ShadowIn();
+		}
+		//影に入ってなくしゃがみをやめたか
+		else if (_mainCamera.transform.localPosition.y > -0.1f && _isCrouch == false)
+		{
+			StandUp();
+		}
+		//影に入っている状態からしゃがむのをやめたか,影から出てしまったか
+		else if (((_mainCamera.transform.localPosition.y > -0.1f && _isInsideCheck == true && _isShadow == false) && _isHitObject) || 
+			　　　(_isInsideCheck == false && _isShadow == false)) 
+		{
+			ShadowOut();
+		}
+    }
+
+	//しゃがみ状態にする
+	private void Crouch()
+	{
+		//歩くスピードを変更
+		Acceleration = 0.03f;
+		//当たり判定の幅と高さを変更する
+		_crouchDecision.radius = 0.5f;
+		_crouchDecision.height = 1f;
+		//メインカメラの高さを変更する
+		_mainCameraObj.transform.localPosition = new Vector3(_mainCameraObj.transform.localPosition.x, 1f, _mainCameraObj.transform.localPosition.z);
+		//しゃがみ状態のフラグをfalseにする
+		_isCrouch = false;
+		//影状態からしゃがみになった場合
+		if (_isShadow == false)
+		{
+			//影中のエフェクトを消す
+			_shadowEffect.SetActive(false);
+			//影から出たフェードアウトを入れる
+			_screenFade.shadow_out();
+			//影から出たSEを入れる
+			_AudioSource.PlayOneShot(_playerSes[1]);
+			//影状態じゃないことが分かるようにtrueにする
+			_isShadow = true;
+		}
+		//敵側のスクリプトでタグで判定を取られるので名前をPlayerにする
+		//(tagがPlayerでは敵に見つかり攻撃されるがShadowでは見つからない)
+		this.tag = ("Player");
+	}
+
+	//立ち上がる
+	private void StandUp()
+	{
+		//影のエフェクトが出ていた場合はfalse
+		_shadowEffect.SetActive(false);
+		//コライダーの位置を変更する
+		_sphereCollider.center = new Vector3(_sphereCollider.center.x, -0.5f, _sphereCollider.center.z);
+		//速度を変更する
+		Acceleration = 0.1f;
+		//当たり判定の幅と高さを変更する
+		_crouchDecision.radius = 0.5f;
+		_crouchDecision.height = 2f;
+		//メインカメラの高さを変更する
+		_mainCameraObj.transform.localPosition = new Vector3(_mainCameraObj.transform.localPosition.x, 1f, _mainCameraObj.transform.localPosition.z);
+		//しゃがみ、影状態ではないことを分かるようにtrueにする
+		_isCrouch = true;
+		_isShadow = true;
+		//敵側のスクリプトでタグで判定がとられるので名前をPlayerにする
+		//(tagがPlayerでは敵に見つかり攻撃されるがShadowでは見つからない)
+		this.tag = ("Player");
+	}
+
+	//影に入る
+	private void ShadowIn()
+	{
+		//影に入るフェードインを入れる
+		_screenFade.shadow_in();
+		//影のエフェクトの状態をtrueにする
+		_shadowEffect.SetActive(true);
+		//影に入るSEを入れる
+		_AudioSource.PlayOneShot(_playerSes[0]);
+		//速度を変更する
+		Acceleration = 0.03f;
+		//当たり判定の幅と高さを変更する
+		_crouchDecision.radius = 0.25f;
+		_crouchDecision.height = 0.5f;
+		//コライダーの位置を変更する
+		_sphereCollider.center = new Vector3(_sphereCollider.center.x, 0.2f, _sphereCollider.center.z);
+		//メインカメラの高さを変更する
+		_mainCameraObj.transform.localPosition = new Vector3(_mainCameraObj.transform.localPosition.x, 0f, _mainCameraObj.transform.localPosition.z);
+		//敵側のスクリプトでタグの判定がとられるので名前をShadowにする
+		//(tagがPlayerでは敵に見つかり攻撃されるがShadowでは見つからない)
+		this.tag = ("Shadow");
+		_isShadow = false;
+		_isCrouch = true;
+	}
+
+	//影から出る
+	private void ShadowOut()
+	{
+		//影から出たフェードアウトを入れる
+		_screenFade.shadow_out();
+		//影中のエフェクトを消す
+		_shadowEffect.SetActive(false);
+		//コライダーの位置を変更する
+		_sphereCollider.center = new Vector3(_sphereCollider.center.x, -0.5f, _sphereCollider.center.z);
+		//影から出たSEを入れる
+		_AudioSource.PlayOneShot(_playerSes[1]);
+		//速度を変更する
+		Acceleration = 0.1f;
+		//当たり判定の幅と高さを変更する
+		_crouchDecision.radius = 0.5f;
+		_crouchDecision.height = 2f;
+		//メインカメラの高さを変更する
+		_mainCameraObj.transform.localPosition = new Vector3(_mainCameraObj.transform.localPosition.x, 1f, _mainCameraObj.transform.localPosition.z);
+		//敵側のスクリプトでタグの判定がとられるので名前をPlayerにする
+		//(tagがPlayerでは敵に見つかり攻撃されるがShadowでは見つからない)
+		this.tag = ("Player");
+		//しゃがみ、影状態ではないことを分かるようにtrueにする
+		_isShadow = true;
+		_isCrouch = true;
+	}
+}
